@@ -119,10 +119,31 @@ def ProdMat(Y0, n_timepoints, copy=True):
     return SM
 
 
-def corr_mat(X, n_timepoints, method="rho", copy=True):
-    """
-    Produce sample correlation matrices
-    or Naively corrected z maps.
+def corr_mat(
+    X,
+    n_timepoints,
+    zero_diagonal=True,
+    copy=True,
+):
+    """Compute a pairwise Pearson correlation matrix between regions of X.
+
+    Parameters
+    ----------
+    X : array_like (n_regions x n_timepoints)
+        An array containing the time series of each regions.
+    n_timepoints : int
+        Number of samples in X.
+    zero_diagonal : bool, optional
+        The diagonal of the correlation matrix is set to zero, by default True.
+    copy : bool, optional
+        Copy X before computing correlations, by default True.
+
+    Returns
+    -------
+    rho: ndarray (n_regions x n_regions)
+        Pairwise correlation coefficients.
+    Znaive: ndarray (n_regions x n_regions)
+        Fisher's z-transformed correlation coefficients (naive approach).
     """
 
     if copy:
@@ -134,15 +155,16 @@ def corr_mat(X, n_timepoints, method="rho", copy=True):
         )
         X = X.T
 
-    N = X.shape[0]
-    R = np.corrcoef(X)
+    n_regions = X.shape[0]
 
-    Z = np.arctanh(R) * np.sqrt(n_timepoints - 3)
+    r_mat = np.corrcoef(X)
 
-    R[range(N), range(N)] = 0
-    Z[range(N), range(N)] = 0
+    if zero_diagonal:
+        np.fill_diagonal(r_mat, 0)
 
-    return R, Z
+    z_mat = np.arctanh(r_mat) * np.sqrt(n_timepoints - 3)  # check this
+
+    return np.round(r_mat, 7), np.round(z_mat, 7)
 
 
 def stat_threshold(Z, mce="fdr_bh", a_level=0.05, side="two", copy=True):
