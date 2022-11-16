@@ -39,18 +39,16 @@ def calc_xdf(
             )
         X = X.T
 
-    N = X.shape[0]
+    n_regions = X.shape[0]
 
-    ts_std = np.std(X, axis=1, ddof=1)
-    X = X / np.transpose(np.tile(ts_std, (n_timepoints, 1)))  # standardise
+    X_std = np.std(X, axis=1, ddof=1)
+    X = X / X_std.reshape(-1, 1)  # standardise
     print("calc_xdf::: Time series standardised by their standard deviations.")
 
     ##### Estimate xC and AC ---------------------------------------------------
 
     # Corr----------------------------------------------------------------------
     rho, znaive = matman.corr_mat(X, n_timepoints)
-    rho = np.round(rho, 7)
-    znaive = np.round(znaive, 7)
 
     # Autocorr------------------------------------------------------------------
     [ac, CI] = ac_utils.ac_fft(X, n_timepoints)
@@ -90,8 +88,8 @@ def calc_xdf(
                 print("calc_xdf::: AC Regularisation: Adaptive Truncation")
             [ac, bp] = ac_utils.shrinkme(ac, nLg)
             # truncate the cross-correlations, by the breaking point found from the ACF. (choose the largest of two)
-            for i in np.arange(N):
-                for j in np.arange(N):
+            for i in np.arange(n_regions):
+                for j in np.arange(n_regions):
                     maxBP = np.max([bp[i], bp[j]])
                     xc_p[i, j, :] = ac_utils.curbtaperme(
                         xc_p[i, j, :], nLg, maxBP, verbose=False
@@ -116,9 +114,9 @@ def calc_xdf(
 
     ##### Start of the Monster Equation----------------------------------------
     wgt = np.arange(nLg, 0, -1)
-    wgtm2 = np.tile((np.tile(wgt, [N, 1])), [N, 1])
+    wgtm2 = np.tile((np.tile(wgt, [n_regions, 1])), [n_regions, 1])
     wgtm3 = np.reshape(
-        wgtm2, [N, N, np.size(wgt)]
+        wgtm2, [n_regions, n_regions, np.size(wgt)]
     )  # this is shit, eats all the memory!
     """
      VarHatRho = (Tp*(1-rho.^2).^2 ...
@@ -139,7 +137,7 @@ def calc_xdf(
 
     ##### Truncate to Theoritical Variance --------------------------------------
     TV_val = (1 - rho**2) ** 2 / n_timepoints
-    TV_val[range(N), range(N)] = 0
+    TV_val[range(n_regions), range(n_regions)] = 0
 
     idx_ex = np.where(VarHatRho < TV_val)
     NumTVEx = (np.shape(idx_ex)[1]) / 2
@@ -150,7 +148,7 @@ def calc_xdf(
             print("Variance truncation is ON.")
         # Assuming that the variance can *only* get larger in presence of autocorrelation.
         VarHatRho[idx_ex] = TV_val[idx_ex]
-        FGE = N * (N - 1) / 2
+        FGE = n_regions * (n_regions - 1) / 2
         if verbose:
             print(
                 f"calc_xdf::: {str(NumTVEx)} ({str(round(NumTVEx / FGE * 100, 3))}%) edges had variance smaller than the textbook variance!"
@@ -182,11 +180,11 @@ def calc_xdf(
     f_pval = 2 * sp.norm.cdf(-abs(rzf))  # both tails
 
     # diagonal is rubbish;
-    VarHatRho[range(N), range(N)] = 0
+    VarHatRho[range(n_regions), range(n_regions)] = 0
     f_pval[
-        range(N), range(N)
+        range(n_regions), range(n_regions)
     ] = 0  # NaN screws up everything, so get rid of the diag, but be careful here.
-    rzf[range(N), range(N)] = 0
+    rzf[range(n_regions), range(n_regions)] = 0
 
     return {
         "p": f_pval,

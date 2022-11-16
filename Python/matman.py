@@ -123,7 +123,6 @@ def corr_mat(
     X,
     n_timepoints,
     zero_diagonal=True,
-    copy=True,
 ):
     """Compute a pairwise Pearson correlation matrix between regions of X.
 
@@ -140,29 +139,20 @@ def corr_mat(
 
     Returns
     -------
-    rho: ndarray (n_regions x n_regions)
-        Pairwise correlation coefficients.
-    Znaive: ndarray (n_regions x n_regions)
-        Fisher's z-transformed correlation coefficients (naive approach).
+    r: ndarray (n_regions x n_regions)
+        Pairwise Pearson product-moment correlation coefficients.
+    Z naive: ndarray (n_regions x n_regions)
+        Fisher z-transformation of correlation coefficients (naive approach).
     """
 
-    if copy:
-        X = X.copy()
-
-    if X.shape[1] != n_timepoints:
-        print(
-            "xDF::: Input should be in (n_regions x n_timepoints) form, the matrix was transposed."
-        )
-        X = X.T
-
-    n_regions = X.shape[0]
+    assert X.shape[1] == n_timepoints, "X should be in (n_regions x n_timepoints) form."
 
     r_mat = np.corrcoef(X)
 
-    if zero_diagonal:
+    if zero_diagonal:  # 0 for i=j
         np.fill_diagonal(r_mat, 0)
 
-    z_mat = np.arctanh(r_mat) * np.sqrt(n_timepoints - 3)  # check this
+    z_mat = np.arctanh(r_mat) * np.sqrt(n_timepoints - 3)  # Fisher z-transformation
 
     return np.round(r_mat, 7), np.round(z_mat, 7)
 
