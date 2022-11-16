@@ -24,20 +24,10 @@ def calc_xdf(
     methodparam="adaptive",
     verbose=True,
     TV=True,
-    copy=True,
 ):
 
-    # if not verbose: blockPrint()
-
-    if copy:  # Make sure you are not messing around with the original time series
-        X = X.copy()
-
-    if X.shape[1] != n_timepoints:
-        if verbose:
-            print(
-                "calc_xdf::: Input should be in (n_regions x n_timepoints) form, the matrix was transposed."
-            )
-        X = X.T
+    X = X.copy()  # Make sure you are not messing around with the original time series
+    assert X.shape[1] == n_timepoints, "X should be in (n_regions x n_timepoints) form"
 
     n_regions = X.shape[0]
 
