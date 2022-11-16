@@ -19,7 +19,7 @@ def generate_X(rng, n_timepoints=1200, ar_rho=0.5, corr_rho=0.5):
     Parameters
     ----------
     rng : np.random.default_rng()
-        Random number generator, by default None
+        Random number generator
     n_timepoints : int, optional
         Number of samples in X, by default 1200
     ar_rho : float, optional
