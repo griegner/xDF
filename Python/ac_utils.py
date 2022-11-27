@@ -10,6 +10,23 @@ srafyouni@gmail.com
 import numpy as np
 
 
+def _nextpow2(n_fft):
+    """The computational complexity of an FFT calculation is more lower for a power of 2,
+    by `O(n log(n))`.
+
+    Parameters
+    ----------
+    n_fft : int
+        Number of samples as input to FFT.
+
+    Returns
+    -------
+    int
+        The length of the FFT output. If larger than the input, the FFT output is padded with zeros.
+    """
+    return 1 if n_fft == 0 else int(2 ** np.ceil(np.log2(n_fft)))
+
+
 def autocorr(x, t=1):
     """dumb autocorrelation on a 1D array,
     almost identical to matlab autocorr()"""
@@ -46,9 +63,7 @@ def ac_fft(X, n_timepoints):
 
     X_demean = X - X.mean(axis=1).reshape(-1, 1)  # demean along n_timepoints
 
-    # next higher power of 2, returns the first P such that P >= abs(N)
-    next_pow2 = lambda x: 1 if x == 0 else int(2 ** np.ceil(np.log2(x)))
-    n_timepoints_fft = next_pow2(2 * n_timepoints - 1)  # zero-pad the hell out!
+    n_timepoints_fft = _nextpow2(2 * n_timepoints - 1)  # zero-pad the hell out!
 
     X_fft = np.fft.fft(X_demean, n=n_timepoints_fft, axis=1)  # frequency domain
 
@@ -93,7 +108,7 @@ def xc_fft(Y, n_timepoints, mxL=None, copy=True):
     mY2 = np.mean(Y, axis=1)
     Y = Y - np.transpose(np.tile(mY2, (n_timepoints, 1)))
 
-    nfft = nextpow2(2 * n_timepoints - 1)  # zero-pad the hell out!
+    nfft = _nextpow2(2 * n_timepoints - 1)  # zero-pad the hell out!
     yfft = np.fft.fft(Y, n=nfft, axis=1)  # be careful with the dimensions
 
     mxLcc = (mxL - 1) * 2 + 1
@@ -121,16 +136,6 @@ def xc_fft(Y, n_timepoints, mxL=None, copy=True):
     lidx = np.arange(-(mxL - 1), mxL)
 
     return xC, lidx
-
-
-def nextpow2(x):
-    """
-    nextpow2 Next higher power of 2.
-    nextpow2(N) returns the first P such that P >= abs(N).  It is
-    often useful for finding the nearest power of two sequence
-    length for FFT operations.
-    """
-    return 1 if x == 0 else int(2 ** np.ceil(np.log2(x)))
 
 
 def ACL(X, n_timepoints):
