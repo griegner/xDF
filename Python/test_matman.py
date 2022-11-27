@@ -16,5 +16,5 @@ def test_corr_mat():
         r_corr, z_corr = matman.corr_mat(X, n_timepoints=n_timepoints)
 
         # difference btw estimated and true parameters
-        assert np.allclose(r_corr[0, 1], corr_rho, atol=0.05)
-        assert np.allclose(z_corr[0, 1], rho_to_z, atol=1.0)
+        assert np.isclose(r_corr[0, 1], corr_rho, atol=0.05)
+        assert np.isclose(z_corr[0, 1], rho_to_z, atol=1.0)
