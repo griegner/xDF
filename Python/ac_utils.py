@@ -21,34 +21,48 @@ def autocorr(x, t=1):
     return AC
 
 
-def ac_fft(Y, n_timepoints, copy=True):
+def ac_fft(X, n_timepoints):
+    """Approximates the autocorrelation functions of `n_regions` over `n_timepoints` using FFT.
 
-    if copy:
-        Y = Y.copy()
+    Convolution theorem: convolution of each timeseries with itself using pointwise multiplication
+    in the frequency domain - the complex conjugate of the discrete Fourier Transform.
 
-    if Y.shape[1] != n_timepoints:
-        print(
-            "ac_fft::: Input should be in (n_regions x n_timepoints) form, the matrix was transposed."
-        )
-        Y = Y.T
+    Parameters
+    ----------
+    X : array_like (n_regions x n_timepoints)
+        An array containing the time series of each regions.
+    n_timepoints : int
+        Number of samples in X.
 
-    print("ac_fft::: Demean along n_timepoints")
-    mY2 = np.mean(Y, axis=1)
-    Y = Y - np.transpose(np.tile(mY2, (n_timepoints, 1)))
+    Returns
+    -------
+    X_ac : array_like (n_regions x n_timepoints)
+        The full-lag autocorrelation function (ACF) for each region.
+    ci : list [lower, upper]
+        95% confidence intervals of X_ac.
+    """
 
-    nfft = int(nextpow2(2 * n_timepoints - 1))  # zero-pad the hell out!
-    yfft = np.fft.fft(Y, n=nfft, axis=1)  # be careful with the dimensions
-    ACOV = np.real(np.fft.ifft(yfft * np.conj(yfft), axis=1))
-    ACOV = ACOV[:, 0:n_timepoints]
+    assert X.shape[1] == n_timepoints, "X should be in (n_regions x n_timepoints) form."
 
-    Norm = np.sum(np.abs(Y) ** 2, axis=1)
-    Norm = np.transpose(np.tile(Norm, (n_timepoints, 1)))
-    xAC = ACOV / Norm  # normalise the COVs
+    X_demean = X - X.mean(axis=1).reshape(-1, 1)  # demean along n_timepoints
 
-    bnd = (np.sqrt(2) * 1.3859) / np.sqrt(n_timepoints)  # assumes normality for AC
-    CI = [-bnd, bnd]
+    # next higher power of 2, returns the first P such that P >= abs(N)
+    next_pow2 = lambda x: 1 if x == 0 else int(2 ** np.ceil(np.log2(x)))
+    n_timepoints_fft = next_pow2(2 * n_timepoints - 1)  # zero-pad the hell out!
 
-    return xAC, CI
+    X_fft = np.fft.fft(X_demean, n=n_timepoints_fft, axis=1)  # frequency domain
+
+    # convolution theorem: using the complex conjugate of X_fft
+    X_cov = np.real(np.fft.ifft(X_fft * np.conj(X_fft), axis=1))  # time domain
+    X_cov = X_cov[:, :n_timepoints]  # remove zero-padding
+
+    X_var = np.sum(X_demean**2, axis=1)
+    X_ac = X_cov / X_var.reshape(-1, 1)  # covariances to correlations
+
+    bnd = (np.sqrt(2) * 1.3859) / np.sqrt(n_timepoints)  # assumes normality for X_ac
+    ci = [-bnd, bnd]
+
+    return X_ac, ci
 
 
 def xc_fft(Y, n_timepoints, mxL=None, copy=True):
