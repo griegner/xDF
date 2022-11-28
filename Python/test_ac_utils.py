@@ -28,6 +28,10 @@ def test_xc_fft():
         X2 = generate_X(rng2, n_timepoints=n_timepoints, ar_rho=0.8, corr_rho=corr_rho)
         X = np.vstack((X1, X2))
         X_xc, _ = ac_utils.xc_fft(X, n_timepoints)
+        X_xc_np = np.corrcoef(X)
+        np.fill_diagonal(X_xc_np, 0)
 
-        assert np.isclose(X_xc[0, 1, n_timepoints - 1], corr_rho, atol=0.05)  # zero lag
+        # compare zero-lag pairwise cross-correlation matrix to true parameters and numpy estimates
+        assert np.isclose(X_xc[0, 1, n_timepoints - 1], corr_rho, atol=0.05)
         assert np.isclose(X_xc[2, 3, n_timepoints - 1], corr_rho, atol=0.05)
+        assert np.allclose(X_xc[:, :, n_timepoints - 1], X_xc_np, atol=0.01)
