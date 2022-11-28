@@ -41,18 +41,17 @@ def calc_xdf(
     rho, znaive = matman.corr_mat(X, n_timepoints)
 
     # Autocorr------------------------------------------------------------------
-    [ac, CI] = ac_utils.ac_fft(X, n_timepoints)
-    ac = ac[
-        :, 1 : n_timepoints - 1
-    ]  # The last element of ACF is rubbish, the first one is 1
+    X_ac, ci = ac_utils.ac_fft(X, n_timepoints)
+    # The last element of ACF is rubbish, the first one is 1
+    X_ac = X_ac[:, 1 : n_timepoints - 1]
     nLg = n_timepoints - 2
 
     # Cross-corr----------------------------------------------------------------
-    [xcf, lid] = ac_utils.xc_fft(X, n_timepoints)
+    X_xc, lag_idx = ac_utils.xc_fft(X, n_timepoints)
 
-    xc_p = xcf[:, :, 1 : n_timepoints - 1]
+    xc_p = X_xc[:, :, 1 : n_timepoints - 1]
     xc_p = np.flip(xc_p, axis=2)  # positive-lag xcorrs
-    xc_n = xcf[:, :, n_timepoints:-1]  # negative-lag xcorrs
+    xc_n = X_xc[:, :, n_timepoints:-1]  # negative-lag xcorrs
 
     ##### Start of Regularisation-----------------------------------------------
     if method.lower() == "tukey":
@@ -62,7 +61,7 @@ def calc_xdf(
                 f"calc_xdf::: AC Regularisation: Tukey tapering of M = {int(np.round(M))}"
             )
 
-        ac = ac_utils.tukeytaperme(ac, nLg, M)
+        X_ac = ac_utils.tukeytaperme(X_ac, nLg, M)
         xc_p = ac_utils.tukeytaperme(xc_p, nLg, M)
         xc_n = ac_utils.tukeytaperme(xc_n, nLg, M)
 
@@ -76,7 +75,7 @@ def calc_xdf(
                 )
             if verbose:
                 print("calc_xdf::: AC Regularisation: Adaptive Truncation")
-            [ac, bp] = ac_utils.shrinkme(ac, nLg)
+            [X_ac, bp] = ac_utils.shrinkme(X_ac, nLg)
             # truncate the cross-correlations, by the breaking point found from the ACF. (choose the largest of two)
             for i in np.arange(n_regions):
                 for j in np.arange(n_regions):
@@ -93,7 +92,7 @@ def calc_xdf(
                     f"calc_xdf::: AC Regularisation: Non-adaptive Truncation on M = {str(methodparam)}"
                 )
 
-            ac = ac_utils.curbtaperme(ac, nLg, methodparam)
+            X_ac = ac_utils.curbtaperme(X_ac, nLg, methodparam)
             xc_p = ac_utils.curbtaperme(xc_p, nLg, methodparam)
             xc_n = ac_utils.curbtaperme(xc_n, nLg, methodparam)
 
@@ -120,9 +119,11 @@ def calc_xdf(
     VarHatRho = (
         Tp * (1 - rho**2) ** 2
         + rho**2
-        * np.sum(wgtm3 * (matman.SumMat(ac**2, nLg) + xc_p**2 + xc_n**2), axis=2)
-        - 2 * rho * np.sum(wgtm3 * (matman.SumMat(ac, nLg) * (xc_p + xc_n)), axis=2)
-        + 2 * np.sum(wgtm3 * (matman.ProdMat(ac, nLg) + (xc_p * xc_n)), axis=2)
+        * np.sum(
+            wgtm3 * (matman.SumMat(X_ac**2, nLg) + xc_p**2 + xc_n**2), axis=2
+        )
+        - 2 * rho * np.sum(wgtm3 * (matman.SumMat(X_ac, nLg) * (xc_p + xc_n)), axis=2)
+        + 2 * np.sum(wgtm3 * (matman.ProdMat(X_ac, nLg) + (xc_p * xc_n)), axis=2)
     ) / (n_timepoints**2)
 
     ##### Truncate to Theoritical Variance --------------------------------------

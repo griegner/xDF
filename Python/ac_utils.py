@@ -11,7 +11,7 @@ import numpy as np
 
 
 def _nextpow2(n_fft):
-    """The computational complexity of an FFT calculation is more lower for a power of 2,
+    """The computational complexity of an FFT calculation is lower for a power of 2,
     by `O(n log(n))`.
 
     Parameters
@@ -80,62 +80,52 @@ def ac_fft(X, n_timepoints):
     return X_ac, ci
 
 
-def xc_fft(Y, n_timepoints, mxL=None, copy=True):
+def xc_fft(X, n_timepoints):
+    """Approximates the pairwise cross-correlations of `n_regions` over `n_timepoints` using FFT.
 
-    if mxL is None:
-        mxL = []
-    # ***********************************
-    # This should be checked! There shouldn't be any complex numbers!!
-    # __main__:74: ComplexWarning: Casting complex values to real discards the imaginary part
-    # This is because Python, in contrast to Matlab, produce highly prcise imaginary parts
-    # by defualt, when you wanna do ifft, just use np.real()
-    # ***********************************
-    if copy:
-        Y = Y.copy()
+    Parameters
+    ----------
+    X : array_like (n_regions x n_timepoints)
+        An array containing the time series of each regions.
+    n_timepoints : int
+        Number of samples in X.
 
-    if Y.shape[1] != n_timepoints:
-        print(
-            "xc_fft::: Input should be in (n_regions x n_timepoints) form, the matrix was transposed."
-        )
-        Y = np.transpose(Y)
+    Returns
+    -------
+    X_xc : array_like (n_regions x n_regions x [n_timepoints-1]*2+1)
+        The full-lag cross-correlations between each pair of regions.
+    lag_idx : 1D array with the indices of the all lags (axis=2 of X_xc)
+    """
 
-    if not np.size(mxL):
-        mxL = n_timepoints
+    assert X.shape[1] == n_timepoints, "X should be in (n_regions x n_timepoints) form."
 
-    I = Y.shape[0]
+    n_regions = X.shape[0]
 
-    print("xc_fft::: Demean along n_timepoints")
-    mY2 = np.mean(Y, axis=1)
-    Y = Y - np.transpose(np.tile(mY2, (n_timepoints, 1)))
+    X_demean = X - X.mean(axis=1).reshape(-1, 1)  # demean along n_timepoints
 
-    nfft = _nextpow2(2 * n_timepoints - 1)  # zero-pad the hell out!
-    yfft = np.fft.fft(Y, n=nfft, axis=1)  # be careful with the dimensions
+    n_timepoints_fft = _nextpow2(2 * n_timepoints - 1)  # zero-pad the hell out!
 
-    mxLcc = (mxL - 1) * 2 + 1
-    xC = np.zeros([I, I, mxLcc])
+    X_fft = np.fft.fft(X_demean, n=n_timepoints_fft, axis=1)  # frequency domain
 
-    XX = np.triu_indices(I, 1)[0]
-    YY = np.triu_indices(I, 1)[1]
+    n_lags = (n_timepoints - 1) * 2 + 1
+    X_xc = np.zeros([n_regions, n_regions, n_lags])  # initialize X_xc 3d array
 
-    for i in np.arange(np.size(XX)):  # loop around edges.
+    triu_i, triu_j = np.triu_indices(n_regions, 1)  # upper triangle above diagonal
 
-        xC0 = np.fft.ifft(yfft[XX[i], :] * np.conj(yfft[YY[i], :]), axis=0)
-        xC0 = np.real(xC0)
-        xC0 = np.concatenate((xC0[-mxL + 1 : None], xC0[:mxL]))
+    for i, j in zip(triu_i, triu_j):  # loop around edges.
 
-        xC0 = np.fliplr([xC0])[0]
-        Norm = np.sqrt(
-            np.sum(np.abs(Y[XX[i], :]) ** 2) * np.sum(np.abs(Y[YY[i], :]) ** 2)
-        )
+        X_cov = np.real(np.fft.ifft(X_fft[i, :] * np.conj(X_fft[j, :]), axis=0))
+        X_cov = np.concatenate([X_cov[-n_timepoints + 1 :], X_cov[:n_timepoints]])[::-1]
 
-        xC0 = xC0 / Norm
-        xC[XX[i], YY[i], :] = xC0
-        del xC0
+        X_var = np.sqrt(np.sum(X_demean[i, :] ** 2) * np.sum(X_demean[j, :] ** 2))
 
-    xC = xC + np.transpose(xC, (1, 0, 2))
-    lidx = np.arange(-(mxL - 1), mxL)
+        X_xc[i, j, :] = X_cov / X_var
+        del X_cov, X_var
 
-    return xC, lidx
+    X_xc = X_xc + np.transpose(X_xc, (1, 0, 2))  # add lower triangle
+    lag_idx = np.arange(-(n_timepoints - 1), n_timepoints)  # index of lags axis=2
+
+    return X_xc, lag_idx
 
 
 def ACL(X, n_timepoints):
