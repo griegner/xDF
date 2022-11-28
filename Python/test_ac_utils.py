@@ -21,17 +21,25 @@ def test_xc_fft():
     rng2 = np.random.default_rng(10)
     n_timepoints = 1200
 
-    for i in range(1, 10, 2):
-        corr_rho = i / 10  # set cross correlation parameter
+    for ac in range(1, 10, 2):
+        ar_rho = ac / 10
 
-        X1 = generate_X(rng1, n_timepoints=n_timepoints, ar_rho=0.4, corr_rho=corr_rho)
-        X2 = generate_X(rng2, n_timepoints=n_timepoints, ar_rho=0.8, corr_rho=corr_rho)
-        X = np.vstack((X1, X2))
-        X_xc, _ = ac_utils.xc_fft(X, n_timepoints)
-        X_xc_np = np.corrcoef(X)
-        np.fill_diagonal(X_xc_np, 0)
+        for xc in range(1, 10, 2):
+            corr_rho = xc / 10
 
-        # compare zero-lag pairwise cross-correlation matrix to true parameters and numpy estimates
-        assert np.isclose(X_xc[0, 1, n_timepoints - 1], corr_rho, atol=0.05)
-        assert np.isclose(X_xc[2, 3, n_timepoints - 1], corr_rho, atol=0.05)
-        assert np.allclose(X_xc[:, :, n_timepoints - 1], X_xc_np, atol=0.01)
+            X1 = generate_X(rng1, n_timepoints, ar_rho, corr_rho)
+            X2 = generate_X(rng2, n_timepoints, ar_rho, corr_rho)
+            X = np.vstack((X1, X2))
+            X_xc, _ = ac_utils.xc_fft(X, n_timepoints)
+
+            # test *cross*correlations at lag 0
+            assert np.isclose(X_xc[0, 1, n_timepoints - 1], corr_rho, atol=0.1)
+            assert np.isclose(X_xc[2, 3, n_timepoints - 1], corr_rho, atol=0.1)
+
+            # compare to numpy corrcoef(X) function
+            assert np.allclose(X_xc[:, :, n_timepoints - 1], np.corrcoef(X), atol=0.001)
+
+            # test *auto*correlations at lag 1 (AR1)
+            assert np.allclose(
+                np.diag(X_xc[:, :, n_timepoints]), np.full(4, ar_rho), atol=0.06
+            )

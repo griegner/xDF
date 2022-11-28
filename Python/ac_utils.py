@@ -83,6 +83,10 @@ def ac_fft(X, n_timepoints):
 def xc_fft(X, n_timepoints):
     """Approximates the pairwise cross-correlations of `n_regions` over `n_timepoints` using FFT.
 
+    Calculates a 3D array of (n_regions x n_regions x [n_timepoints-1]*2+1)
+    1) diagonals: *auto*correlations across positive and negative lags of `n_timepoints`
+    2) off diagnonals: *cross*correlations between pairs of `n_regions` across positive and negative lags of `n_timepoints`
+
     Parameters
     ----------
     X : array_like (n_regions x n_timepoints)
@@ -110,7 +114,7 @@ def xc_fft(X, n_timepoints):
     n_lags = (n_timepoints - 1) * 2 + 1
     X_xc = np.zeros([n_regions, n_regions, n_lags])  # initialize X_xc 3d array
 
-    triu_i, triu_j = np.triu_indices(n_regions, 1)  # upper triangle above diagonal
+    triu_i, triu_j = np.triu_indices(n_regions, 0)  # upper triangle including diagonal
 
     for i, j in zip(triu_i, triu_j):  # loop around edges.
 
@@ -119,10 +123,12 @@ def xc_fft(X, n_timepoints):
 
         X_var = np.sqrt(np.sum(X_demean[i, :] ** 2) * np.sum(X_demean[j, :] ** 2))
 
-        X_xc[i, j, :] = X_cov / X_var
-        del X_cov, X_var
+        X_cor = X_cov / X_var
+        X_xc[i, j, :] = X_cor  # upper triangle
+        X_xc[j, i, :] = X_cor  # lower triangle, overwrite the diagonal
 
-    X_xc = X_xc + np.transpose(X_xc, (1, 0, 2))  # add lower triangle
+        del X_cov, X_var, X_cor
+
     lag_idx = np.arange(-(n_timepoints - 1), n_timepoints)  # index of lags axis=2
 
     return X_xc, lag_idx
