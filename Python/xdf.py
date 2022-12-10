@@ -49,9 +49,9 @@ def calc_xdf(
     # Cross-corr----------------------------------------------------------------
     X_xc, lag_idx = ac_utils.xc_fft(X, n_timepoints)
 
-    xc_p = X_xc[:, :, 1 : n_timepoints - 1]
-    xc_p = np.flip(xc_p, axis=2)  # positive-lag xcorrs
-    xc_n = X_xc[:, :, n_timepoints:-1]  # negative-lag xcorrs
+    X_xc_pos = X_xc[:, :, 1 : n_timepoints - 1]
+    X_xc_pos = np.flip(X_xc_pos, axis=2)  # positive-lag xcorrs
+    X_xc_neg = X_xc[:, :, n_timepoints:-1]  # negative-lag xcorrs
 
     ##### Start of Regularisation-----------------------------------------------
     if method.lower() == "tukey":
@@ -80,11 +80,11 @@ def calc_xdf(
             for i in np.arange(n_regions):
                 for j in np.arange(n_regions):
                     maxBP = np.max([bp[i], bp[j]])
-                    xc_p[i, j, :] = ac_utils.curbtaperme(
-                        xc_p[i, j, :], nLg, maxBP, verbose=False
+                    X_xc_pos[i, j, :] = ac_utils.curbtaperme(
+                        X_xc_pos[i, j, :], nLg, maxBP, verbose=False
                     )
-                    xc_n[i, j, :] = ac_utils.curbtaperme(
-                        xc_n[i, j, :], nLg, maxBP, verbose=False
+                    X_xc_neg[i, j, :] = ac_utils.curbtaperme(
+                        X_xc_neg[i, j, :], nLg, maxBP, verbose=False
                     )
         elif type(methodparam) == int:  # Npne-Adaptive Truncation
             if verbose:
@@ -93,8 +93,8 @@ def calc_xdf(
                 )
 
             X_ac = ac_utils.curbtaperme(X_ac, nLg, methodparam)
-            xc_p = ac_utils.curbtaperme(xc_p, nLg, methodparam)
-            xc_n = ac_utils.curbtaperme(xc_n, nLg, methodparam)
+            X_xc_pos = ac_utils.curbtaperme(X_xc_pos, nLg, methodparam)
+            X_xc_neg = ac_utils.curbtaperme(X_xc_neg, nLg, methodparam)
 
         else:
             raise ValueError(
@@ -120,10 +120,14 @@ def calc_xdf(
         Tp * (1 - rho**2) ** 2
         + rho**2
         * np.sum(
-            wgtm3 * (matman.SumMat(X_ac**2, nLg) + xc_p**2 + xc_n**2), axis=2
+            wgtm3 * (matman.SumMat(X_ac**2, nLg) + X_xc_pos**2 + X_xc_neg**2),
+            axis=2,
         )
-        - 2 * rho * np.sum(wgtm3 * (matman.SumMat(X_ac, nLg) * (xc_p + xc_n)), axis=2)
-        + 2 * np.sum(wgtm3 * (matman.ProdMat(X_ac, nLg) + (xc_p * xc_n)), axis=2)
+        - 2
+        * rho
+        * np.sum(wgtm3 * (matman.SumMat(X_ac, nLg) * (X_xc_pos + X_xc_neg)), axis=2)
+        + 2
+        * np.sum(wgtm3 * (matman.ProdMat(X_ac, nLg) + (X_xc_pos * X_xc_neg)), axis=2)
     ) / (n_timepoints**2)
 
     ##### Truncate to Theoritical Variance --------------------------------------
