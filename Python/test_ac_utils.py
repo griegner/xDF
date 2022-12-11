@@ -43,3 +43,15 @@ def test_xc_fft():
             assert np.allclose(
                 np.diag(X_xc[:, :, n_timepoints]), np.full(4, ar_rho), atol=0.06
             )
+
+
+def test_adaptive_truncation():
+    rng = np.random.default_rng(1)
+    n_timepoints = 1200
+
+    X = generate_X(rng, n_timepoints=n_timepoints, ar_rho=0.5, corr_rho=0)
+    X_ac, _ = ac_utils.ac_fft(X, n_timepoints)
+    X_ac, breakpoints = ac_utils.adaptive_truncation(X_ac, n_timepoints)
+
+    assert list(breakpoints) == [4, 5]
+    assert X_ac[0, 4] == X_ac[0, 5] == 0

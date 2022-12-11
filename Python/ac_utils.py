@@ -187,61 +187,65 @@ def tukeytaperme(ac, n_timepoints, M, verbose=True):
     return tt_ts
 
 
-def curbtaperme(ac, n_timepoints, M, verbose=True):
+def curbtaperme(corr, max_breakpoint):
+    """Zero the correlation estimates at lags k >= `max_breakpoint`.
+
+    Parameters
+    ----------
+    corr : array_like (1d, 2d, or 3d)
+
+    max_breakpoint : int
+        Zero all lags k >= `max_breakpoint`.
+
+    Returns
+    -------
+    msk * corr : array_like (1d, 2d, or 3d)
+        The autocorrelations zeroed along the kth axis.
     """
-    Curb the autocorrelations, according to Anderson 1984
-    multi-dimensional, and therefore is fine!
-    SA, Ox, 2018
+    msk = np.zeros(corr.shape)
+    if len(corr.shape) == 2:
+        msk[:, :max_breakpoint] = 1
+
+    elif len(corr.shape) == 3:
+        msk[:, :, :max_breakpoint] = 1
+
+    elif len(corr.shape) == 1:
+        msk[:max_breakpoint] = 1
+
+    return msk * corr
+
+
+def adaptive_truncation(X_ac, n_timepoints):
+    """An adaptive truncation method to regularize ACF estimates by zeroing lags k >= M,
+    where M is the smallest lag where the null hypothesis is not rejected at uncorrected alpha = 5%.
+    This is based on approximate normality of the ACF and sampling variance of 1/N.
+
+    Parameters
+    ----------
+    X_ac : array_like (n_regions x n_timepoints)
+        The full-lag autocorrelation function (ACF) for each region.
+    n_timepoints : int
+        The number of samples in X_ac.
+
+    Returns
+    -------
+    X_ac : array_like (n_regions x n_timepoints)
+        The truncated ACF for each region.
+    breakpoints : array_like (n_regions)
+        The index of the breakpoint for each region.
     """
-    ac = ac.copy()
-    M = int(round(M))
-    msk = np.zeros(ac.shape)
-    if len(ac.shape) == 2:
-        if verbose:
-            print("curbtaperme::: The input is 2D.")
-        msk[:, 0:M] = 1
+    assert (
+        X_ac.shape[1] == n_timepoints
+    ), "X should be in (n_regions x n_timepoints) form."
 
-    elif len(ac.shape) == 3:
-        if verbose:
-            print("curbtaperme::: The input is 3D.")
-        msk[:, :, 0:M] = 1
+    # assumes normality for AC, 95% CI
+    bnd = (np.sqrt(2) * 1.3859) / np.sqrt(n_timepoints)
 
-    elif len(ac.shape) == 1:
-        if verbose:
-            print("curbtaperme::: The input is 1D.")
-        msk[:M] = 1
+    mask = np.abs(X_ac) > bnd
+    breakpoints = np.argmin(mask, axis=1)
 
-    return msk * ac
+    # set all values after the breakpoint to zero
+    for region, breakpoint in enumerate(breakpoints):
+        mask[region, breakpoint + 1 :] = False
 
-
-def shrinkme(ac, n_timepoints):
-    """
-    Shrinks the *early* bucnhes of autocorr coefficients beyond the CI.
-    Yo! this should be transformed to the matrix form, those fors at the top
-    are bleak!
-
-    SA, Ox, 2018
-    """
-    ac = ac.copy()
-
-    if ac.shape[1] != n_timepoints:
-        ac = ac.T
-
-    bnd = (np.sqrt(2) * 1.3859) / np.sqrt(n_timepoints)  # assumes normality for AC
-
-    N = ac.shape[0]
-    msk = np.zeros(ac.shape)
-    BreakPoint = np.zeros(N)
-    for i in np.arange(N):
-        TheFirstFalse = np.where(
-            np.abs(ac[i, :]) < bnd
-        )  # finds the break point -- intercept
-        if (
-            np.size(TheFirstFalse) == 0
-        ):  # if you coulnd't find a break point, then continue = the row will remain zero
-            continue
-        else:
-            BreakPoint_tmp = TheFirstFalse[0][0]
-        msk[i, :BreakPoint_tmp] = 1
-        BreakPoint[i] = BreakPoint_tmp
-    return ac * msk, BreakPoint
+    return X_ac * mask, breakpoints

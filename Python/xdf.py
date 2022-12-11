@@ -65,8 +65,6 @@ def calc_xdf(
         xc_p = ac_utils.tukeytaperme(xc_p, nLg, M)
         xc_n = ac_utils.tukeytaperme(xc_n, nLg, M)
 
-        # print(np.round(ac[0,0:50],4))
-
     elif method.lower() == "truncate":
         if type(methodparam) == str:  # Adaptive Truncation
             if methodparam.lower() != "adaptive":
@@ -75,26 +73,22 @@ def calc_xdf(
                 )
             if verbose:
                 print("calc_xdf::: AC Regularisation: Adaptive Truncation")
-            [X_ac, bp] = ac_utils.shrinkme(X_ac, nLg)
+            X_ac, breakpoints = ac_utils.adaptive_truncation(X_ac, nLg)
             # truncate the cross-correlations, by the breaking point found from the ACF. (choose the largest of two)
             for i in np.arange(n_regions):
-                for j in np.arange(n_regions):
-                    maxBP = np.max([bp[i], bp[j]])
-                    X_xc_pos[i, j, :] = ac_utils.curbtaperme(
-                        X_xc_pos[i, j, :], nLg, maxBP, verbose=False
-                    )
-                    X_xc_neg[i, j, :] = ac_utils.curbtaperme(
-                        X_xc_neg[i, j, :], nLg, maxBP, verbose=False
-                    )
+                for j in np.arange(n_regions):  # iterate through every pair of regions
+                    max_bp = np.max([breakpoints[i], breakpoints[j]])
+                    X_xc_pos[i, j, :] = ac_utils.curbtaperme(X_xc_pos[i, j, :], max_bp)
+                    X_xc_neg[i, j, :] = ac_utils.curbtaperme(X_xc_neg[i, j, :], max_bp)
         elif type(methodparam) == int:  # Npne-Adaptive Truncation
             if verbose:
                 print(
                     f"calc_xdf::: AC Regularisation: Non-adaptive Truncation on M = {str(methodparam)}"
                 )
 
-            X_ac = ac_utils.curbtaperme(X_ac, nLg, methodparam)
-            X_xc_pos = ac_utils.curbtaperme(X_xc_pos, nLg, methodparam)
-            X_xc_neg = ac_utils.curbtaperme(X_xc_neg, nLg, methodparam)
+            X_ac = ac_utils.curbtaperme(X_ac, methodparam)
+            X_xc_pos = ac_utils.curbtaperme(X_xc_pos, methodparam)
+            X_xc_neg = ac_utils.curbtaperme(X_xc_neg, methodparam)
 
         else:
             raise ValueError(
