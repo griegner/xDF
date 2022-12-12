@@ -53,7 +53,7 @@ def ac_fft(X, n_timepoints):
 
     Returns
     -------
-    X_ac : array_like (n_regions x n_timepoints)
+    X_ac : array_like (n_regions x n_lags)
         The full-lag autocorrelation function (ACF) for each region.
     ci : list [lower, upper]
         95% confidence intervals of X_ac.
@@ -96,7 +96,7 @@ def xc_fft(X, n_timepoints):
 
     Returns
     -------
-    X_xc : array_like (n_regions x n_regions x [n_timepoints-1]*2+1)
+    X_xc : array_like (n_regions x n_regions x [n_lags-1]*2+1)
         The full-lag cross-correlations between each pair of regions.
     lag_idx : 1D array with the indices of the all lags (axis=2 of X_xc)
     """
@@ -144,102 +144,101 @@ def ACL(X, n_timepoints):
     ######################## AC Reg Functions #################################
 
 
-def tukeytaperme(ac, n_timepoints, M, verbose=True):
-    """
-    performs single Tukey tapering for given length of window, M, and initial
-    value, intv. intv should only be used on crosscorrelation matrices.
-
-    SA, Ox, 2018
-    """
-    ac = ac.copy()
-    # ----Checks:
-    if n_timepoints not in ac.shape:
-        raise ValueError("tukeytaperme::: There is something wrong, mate!")
-        # print('Oi')
-    # ----
-
-    M = int(np.round(M))
-
-    tukeymultiplier = (1 + np.cos(np.arange(1, M) * np.pi / M)) / 2
-    tt_ts = np.zeros(ac.shape)
-
-    if len(ac.shape) == 2:
-        if ac.shape[1] != n_timepoints:
-            ac = ac.T
-        if verbose:
-            print("tukeytaperme::: The input is 2D.")
-        N = ac.shape[0]
-        tt_ts[:, 0 : M - 1] = np.tile(tukeymultiplier, [N, 1]) * ac[:, 0 : M - 1]
-
-    elif len(ac.shape) == 3:
-        if verbose:
-            print("tukeytaperme::: The input is 3D.")
-        N = ac.shape[0]
-        tt_ts[:, :, 0 : M - 1] = (
-            np.tile(tukeymultiplier, [N, N, 1]) * ac[:, :, 0 : M - 1]
-        )
-
-    elif len(ac.shape) == 1:
-        if verbose:
-            print("tukeytaperme::: The input is 1D.")
-        tt_ts[: M - 1] = tukeymultiplier * ac[: M - 1]
-
-    return tt_ts
-
-
-def curbtaperme(corr, max_breakpoint):
-    """Zero the correlation estimates at lags k >= `max_breakpoint`.
+def tukey_taper(ac, n_lags, breakpoint):
+    """Multiply the ACF by a scaling factor for `n_lags` <= `breakpoint`, and zero `n_lags` > `breakpoint`.
 
     Parameters
     ----------
-    corr : array_like (1d, 2d, or 3d)
-
-    max_breakpoint : int
-        Zero all lags k >= `max_breakpoint`.
+    ac : array_like (1d, 2d, or 3d)
+        The full-lag autocorrelation function (ACF).
+    n_lags : int
+        The number of lags used to calculate the ACF.
+    breakpoint : int
+        The index of the breakpoint.
 
     Returns
     -------
-    msk * corr : array_like (1d, 2d, or 3d)
-        The autocorrelations zeroed along the kth axis.
+    ac_tapered: array_like (1d, 2d, or 3d)
+        The tapered ACF, zeroed after `breakpoint` along the `n_lags` axis.
     """
-    msk = np.zeros(corr.shape)
-    if len(corr.shape) == 2:
-        msk[:, :max_breakpoint] = 1
+    assert n_lags in ac.shape, "`n_lags` not in `ac`"
 
-    elif len(corr.shape) == 3:
-        msk[:, :, :max_breakpoint] = 1
+    breakpoint = int(np.round(breakpoint))
+    tukey_multiplier = (1 + np.cos(np.arange(1, breakpoint) * np.pi / breakpoint)) / 2
+    ac_tapered = np.zeros(ac.shape)
 
-    elif len(corr.shape) == 1:
-        msk[:max_breakpoint] = 1
+    if len(ac.shape) == 2:
+        assert ac.shape[1] == n_lags, "ac should be in (n_regions x n_lags) form."
+        n_regions = ac.shape[0]
+        ac_tapered[:, : breakpoint - 1] = (
+            np.tile(tukey_multiplier, [n_regions, 1]) * ac[:, : breakpoint - 1]
+        )
 
-    return msk * corr
+    elif len(ac.shape) == 3:
+        n_regions = ac.shape[0]
+        ac_tapered[:, :, : breakpoint - 1] = (
+            np.tile(tukey_multiplier, [n_regions, n_regions, 1])
+            * ac[:, :, : breakpoint - 1]
+        )
+
+    elif len(ac.shape) == 1:
+        ac_tapered[: breakpoint - 1] = tukey_multiplier * ac[: breakpoint - 1]
+
+    return ac_tapered
 
 
-def adaptive_truncation(X_ac, n_timepoints):
-    """An adaptive truncation method to regularize ACF estimates by zeroing lags k >= M,
-    where M is the smallest lag where the null hypothesis is not rejected at uncorrected alpha = 5%.
-    This is based on approximate normality of the ACF and sampling variance of 1/N.
+def truncate(ac, breakpoint):
+    """Zero the ACF at `n_lags` >= `breakpoint`.
+
+    Parameters
+    ----------
+    ac : array_like (1d, 2d, or 3d)
+        The full-lag autocorrelation function (ACF).
+
+    breakpoint : int
+        The index of the breakpoint.
+
+    Returns
+    -------
+    ac_truncated : array_like (1d, 2d, or 3d)
+        The ACF zeroed after `breakpoint` along the `n_lags` axis.
+    """
+    mask = np.zeros(ac.shape)
+    if len(ac.shape) == 2:
+        mask[:, :breakpoint] = 1
+
+    elif len(ac.shape) == 3:
+        mask[:, :, :breakpoint] = 1
+
+    elif len(ac.shape) == 1:
+        mask[:breakpoint] = 1
+
+    return mask * ac
+
+
+def adaptive_truncate(X_ac, n_lags):
+    """An adaptive truncation method to regularize ACF estimates by zeroing `n_lags` >= `breakpoint`,
+    where the breakpoint is the smallest lag where the null hypothesis is not rejected at uncorrected alpha = 5%.
+    This is based on approximate normality of the ACF and sampling variance of 1/n_timepoints.
 
     Parameters
     ----------
     X_ac : array_like (n_regions x n_timepoints)
         The full-lag autocorrelation function (ACF) for each region.
-    n_timepoints : int
-        The number of samples in X_ac.
+    n_lags : int
+        The number of lags used to calculate the ACF.
 
     Returns
     -------
-    X_ac : array_like (n_regions x n_timepoints)
-        The truncated ACF for each region.
+    X_ac_truncated : array_like (n_regions x n_timepoints)
+        The ACF zeroed after `breakpoint` for each region.
     breakpoints : array_like (n_regions)
         The index of the breakpoint for each region.
     """
-    assert (
-        X_ac.shape[1] == n_timepoints
-    ), "X should be in (n_regions x n_timepoints) form."
+    assert X_ac.shape[1] == n_lags, "X_ac should be in (n_regions x n_lags) form."
 
     # assumes normality for AC, 95% CI
-    bnd = (np.sqrt(2) * 1.3859) / np.sqrt(n_timepoints)
+    bnd = (np.sqrt(2) * 1.3859) / np.sqrt(n_lags)
 
     mask = np.abs(X_ac) > bnd
     breakpoints = np.argmin(mask, axis=1)

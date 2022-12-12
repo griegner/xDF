@@ -44,7 +44,7 @@ def calc_xdf(
     X_ac, ci = ac_utils.ac_fft(X, n_timepoints)
     # The last element of ACF is rubbish, the first one is 1
     X_ac = X_ac[:, 1 : n_timepoints - 1]
-    nLg = n_timepoints - 2
+    n_lags = n_timepoints - 2
 
     # Cross-corr----------------------------------------------------------------
     X_xc, lag_idx = ac_utils.xc_fft(X, n_timepoints)
@@ -55,15 +55,14 @@ def calc_xdf(
 
     ##### Start of Regularisation-----------------------------------------------
     if method.lower() == "tukey":
-        M = np.sqrt(n_timepoints) if methodparam == "" else methodparam
         if verbose:
             print(
-                f"calc_xdf::: AC Regularisation: Tukey tapering of M = {int(np.round(M))}"
+                f"calc_xdf::: AC Regularisation: Tukey tapering of M = {int(np.round(breakpoint))}"
             )
-
-        X_ac = ac_utils.tukeytaperme(X_ac, nLg, M)
-        xc_p = ac_utils.tukeytaperme(xc_p, nLg, M)
-        xc_n = ac_utils.tukeytaperme(xc_n, nLg, M)
+        breakpoint = np.sqrt(n_timepoints) if methodparam == "" else methodparam
+        X_ac = ac_utils.tukey_taper(X_ac, n_lags, breakpoint)
+        X_xc_pos = ac_utils.tukey_taper(X_xc_pos, n_lags, breakpoint)
+        X_xc_neg = ac_utils.tukey_taper(X_xc_neg, n_lags, breakpoint)
 
     elif method.lower() == "truncate":
         if type(methodparam) == str:  # Adaptive Truncation
@@ -73,22 +72,22 @@ def calc_xdf(
                 )
             if verbose:
                 print("calc_xdf::: AC Regularisation: Adaptive Truncation")
-            X_ac, breakpoints = ac_utils.adaptive_truncation(X_ac, nLg)
+            X_ac, breakpoints = ac_utils.adaptive_truncate(X_ac, n_lags)
             # truncate the cross-correlations, by the breaking point found from the ACF. (choose the largest of two)
             for i in np.arange(n_regions):
                 for j in np.arange(n_regions):  # iterate through every pair of regions
                     max_bp = np.max([breakpoints[i], breakpoints[j]])
-                    X_xc_pos[i, j, :] = ac_utils.curbtaperme(X_xc_pos[i, j, :], max_bp)
-                    X_xc_neg[i, j, :] = ac_utils.curbtaperme(X_xc_neg[i, j, :], max_bp)
+                    X_xc_pos[i, j, :] = ac_utils.truncate(X_xc_pos[i, j, :], max_bp)
+                    X_xc_neg[i, j, :] = ac_utils.truncate(X_xc_neg[i, j, :], max_bp)
         elif type(methodparam) == int:  # Npne-Adaptive Truncation
             if verbose:
                 print(
                     f"calc_xdf::: AC Regularisation: Non-adaptive Truncation on M = {str(methodparam)}"
                 )
 
-            X_ac = ac_utils.curbtaperme(X_ac, methodparam)
-            X_xc_pos = ac_utils.curbtaperme(X_xc_pos, methodparam)
-            X_xc_neg = ac_utils.curbtaperme(X_xc_neg, methodparam)
+            X_ac = ac_utils.truncate(X_ac, methodparam)
+            X_xc_pos = ac_utils.truncate(X_xc_pos, methodparam)
+            X_xc_neg = ac_utils.truncate(X_xc_neg, methodparam)
 
         else:
             raise ValueError(
@@ -96,14 +95,14 @@ def calc_xdf(
             )
 
     ##### Start of the Monster Equation----------------------------------------
-    wgt = np.arange(nLg, 0, -1)
+    wgt = np.arange(n_lags, 0, -1)
     wgtm2 = np.tile((np.tile(wgt, [n_regions, 1])), [n_regions, 1])
     wgtm3 = np.reshape(
         wgtm2, [n_regions, n_regions, np.size(wgt)]
     )  # this is shit, eats all the memory!
     """
      VarHatRho = (Tp*(1-rho.^2).^2 ...
-     +   rho.^2 .* sum(wgtm3 .* (SumMat(ac.^2,nLg)  +  xc_p.^2 + xc_n.^2),3)...         %1 2 4
+     +   rho.^2 .* sum(wgtm3 .* (SumMat(ac.^2,nLg)  +  xc_p.^2 + xc_n.^2),3)...         % 1 2 4
      -   2.*rho .* sum(wgtm3 .* (SumMat(ac,nLg)    .* (xc_p    + xc_n))  ,3)...         % 5 6 7 8
      +   2      .* sum(wgtm3 .* (ProdMat(ac,nLg)    + (xc_p   .* xc_n))  ,3))./(T^2);   % 3 9 
     """
@@ -114,14 +113,14 @@ def calc_xdf(
         Tp * (1 - rho**2) ** 2
         + rho**2
         * np.sum(
-            wgtm3 * (matman.SumMat(X_ac**2, nLg) + X_xc_pos**2 + X_xc_neg**2),
+            wgtm3 * (matman.SumMat(X_ac**2, n_lags) + X_xc_pos**2 + X_xc_neg**2),
             axis=2,
         )
         - 2
         * rho
-        * np.sum(wgtm3 * (matman.SumMat(X_ac, nLg) * (X_xc_pos + X_xc_neg)), axis=2)
+        * np.sum(wgtm3 * (matman.SumMat(X_ac, n_lags) * (X_xc_pos + X_xc_neg)), axis=2)
         + 2
-        * np.sum(wgtm3 * (matman.ProdMat(X_ac, nLg) + (X_xc_pos * X_xc_neg)), axis=2)
+        * np.sum(wgtm3 * (matman.ProdMat(X_ac, n_lags) + (X_xc_pos * X_xc_neg)), axis=2)
     ) / (n_timepoints**2)
 
     ##### Truncate to Theoritical Variance --------------------------------------
