@@ -30,9 +30,10 @@ n_timepoints = 1200
 ar_rho = 0.5
 corr_rho = 0.8
 
-x, y = np.random.standard_normal(n_timepoints), np.random.standard_normal(
-    n_timepoints
-)  # iid (0, std=1)
+rng = np.random.default_rng(12)
+
+# iid (0, std=1)
+x, y = rng.standard_normal(n_timepoints), rng.standard_normal(n_timepoints)
 y_corr = sim_corr(x, y, corr_rho)  # cross correlation
 x_ar1, y_corr_ar1 = sim_ar1(x, ar_rho), sim_ar1(y_corr, ar_rho)  # serial correlation
 
