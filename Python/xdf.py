@@ -66,10 +66,9 @@ def calc_xdf(
 
     elif method.lower() == "truncate":
         if type(methodparam) == str:  # Adaptive Truncation
-            if methodparam.lower() != "adaptive":
-                raise ValueError(
-                    "What?! Choose adaptive as the option, or pass an integer for truncation"
-                )
+            assert (
+                methodparam.lower() == "adaptive"
+            ), "What?! Choose adaptive as the option, or pass an integer for truncation"
             if verbose:
                 print("calc_xdf::: AC Regularisation: Adaptive Truncation")
             X_ac, breakpoints = ac_utils.adaptive_truncate(X_ac, n_lags)
