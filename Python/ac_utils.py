@@ -145,7 +145,7 @@ def ACL(X, n_timepoints):
 
 
 def tukey_taper(ac, n_lags, breakpoint):
-    """Multiply the ACF by a scaling factor for `n_lags` <= `breakpoint`, and zero `n_lags` > `breakpoint`.
+    """Multiply the ACF by a scaling window for `n_lags` <= `breakpoint`, and zero `n_lags` > `breakpoint`.
 
     Parameters
     ----------
@@ -169,16 +169,11 @@ def tukey_taper(ac, n_lags, breakpoint):
 
     if len(ac.shape) == 2:
         assert ac.shape[1] == n_lags, "ac should be in (n_regions x n_lags) form."
-        n_regions = ac.shape[0]
-        ac_tapered[:, : breakpoint - 1] = (
-            np.tile(tukey_multiplier, [n_regions, 1]) * ac[:, : breakpoint - 1]
-        )
+        ac_tapered[:, : breakpoint - 1] = tukey_multiplier * ac[:, : breakpoint - 1]
 
     elif len(ac.shape) == 3:
-        n_regions = ac.shape[0]
         ac_tapered[:, :, : breakpoint - 1] = (
-            np.tile(tukey_multiplier, [n_regions, n_regions, 1])
-            * ac[:, :, : breakpoint - 1]
+            tukey_multiplier * ac[:, :, : breakpoint - 1]
         )
 
     elif len(ac.shape) == 1:

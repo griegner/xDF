@@ -45,6 +45,38 @@ def test_xc_fft():
             )
 
 
+def test_tukey_taper():
+
+    n_lags = 25
+    breakpoint = 20
+    tukey_multiplier = (1 + np.cos(np.arange(1, breakpoint) * np.pi / breakpoint)) / 2
+
+    # sample ACF
+    expected_ac = np.linspace(0.9, 0.1, n_lags)
+    expected_ac_tapered = np.zeros(expected_ac.shape)
+    expected_ac_tapered[: breakpoint - 1] = (
+        tukey_multiplier * expected_ac[: breakpoint - 1]
+    )
+
+    # test 1d array
+    ac_tapered = ac_utils.tukey_taper(expected_ac, n_lags=n_lags, breakpoint=breakpoint)
+    assert np.array_equal(ac_tapered, expected_ac_tapered)
+
+    # test 2d array
+    expected_ac = np.vstack((expected_ac, expected_ac))
+    expected_ac_tapered = np.vstack((expected_ac_tapered, expected_ac_tapered))
+    ac_tapered = ac_utils.tukey_taper(expected_ac, n_lags=n_lags, breakpoint=breakpoint)
+    assert np.array_equal(ac_tapered, expected_ac_tapered)
+
+    # test 3d array
+    expected_xc = np.dstack((expected_ac, expected_ac)).swapaxes(2, 1)
+    expected_xc_tapered = np.dstack(
+        (expected_ac_tapered, expected_ac_tapered)
+    ).swapaxes(2, 1)
+    xc_tapered = ac_utils.tukey_taper(expected_xc, n_lags=n_lags, breakpoint=breakpoint)
+    assert np.array_equal(xc_tapered, expected_xc_tapered)
+
+
 def test_adaptive_truncate():
     rng = np.random.default_rng(1)
     n_timepoints = 1200
