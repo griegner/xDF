@@ -47,76 +47,62 @@ def issymmetric(W):
     return (W.transpose() == W).all()
 
 
-def SumMat(Y0, n_timepoints, copy=True):
-    """
+def ac_sum(X_ac, n_lags):
+    """Computes the pairwise sum of each region with all other regions for `k = 1 ... n_lags`.
+
+    The function takes in a 2D array of (n_regions, n_lags), and returns a 3D array of (n_regions, n_regions, n_lags),
+    where the element at index (i, j, k) is the sum of the element at index (i, k) and (j, k) in the input array.
+
     Parameters
     ----------
-    Y0 : a 2D matrix of size (n_timepoints x N)
+    X_ac : array_like (n_regions, n_lags)
+        The full-lag autocorrelation function (ACF) for each region.
+    n_lags : int
+        The number of lags used to calculate the ACF.
 
     Returns
     -------
-    SM : 3D matrix, obtained from element-wise summation of each row with other
-         rows.
-
-    SA, Ox, 2019
+    X_ac_sum : array_like (n_regions, n_regions, n_lags)
+        The pairwise sum of each region in X_ac with all other regions across n_lags.
     """
+    assert X_ac.shape[1] == n_lags, "X_ac should be in (n_regions x n_lags) form."
 
-    if copy:
-        Y0 = Y0.copy()
+    n_regions, n_lags = X_ac.shape
+    X_ac_sum = np.zeros([n_regions, n_regions, n_lags])
 
-    if Y0.shape[0] != n_timepoints:
-        print(
-            "SumMat::: Input should be in (n_timepoints x N) form, the matrix was transposed."
-        )
-        Y0 = Y0.T
+    for lag in range(n_lags):
+        X_ac_sum[:, :, lag] = X_ac[:, lag].reshape(-1, 1) + X_ac[:, lag].reshape(1, -1)
 
-    N = Y0.shape[1]
-    Idx = np.triu_indices(N)
-    # F = (N*(N-1))/2
-    SM = np.empty([N, N, n_timepoints])
-    for i in np.arange(0, np.size(Idx[0]) - 1):
-        xx = Idx[0][i]
-        yy = Idx[1][i]
-        SM[xx, yy, :] = Y0[:, xx] + Y0[:, yy]
-        SM[yy, xx, :] = Y0[:, yy] + Y0[:, xx]
-
-    return SM
+    return X_ac_sum
 
 
-def ProdMat(Y0, n_timepoints, copy=True):
-    """
+def ac_prod(X_ac, n_lags):
+    """Computes the pairwise product of each region with all other regions for `k = 1 ... n_lags`.
+
+    The function takes in a 2D array of (n_regions, n_lags), and returns a 3D array of (n_regions, n_regions, n_lags),
+    where the element at index (i, j, k) is the product of the element at index (i, k) and (j, k) in the input array.
+
     Parameters
     ----------
-    Y0 : a 2D matrix of size (n_timepoints x N)
+    X_ac : array_like (n_regions, n_lags)
+        The full-lag autocorrelation function (ACF) for each region.
+    n_lags : int
+        The number of lags used to calculate the ACF.
 
     Returns
     -------
-    SM : 3D matrix, obtained from element-wise multiplication of each row with
-         other rows.
-
-    SA, Ox, 2019
+    X_ac_prod : array_like (n_regions, n_regions, n_lags)
+        The pairwise product of each region in X_ac with all other regions across n_lags.
     """
+    assert X_ac.shape[1] == n_lags, "X_ac should be in (n_regions x n_lags) form."
 
-    if copy:
-        Y0 = Y0.copy()
+    n_regions, n_lags = X_ac.shape
+    X_ac_prod = np.zeros([n_regions, n_regions, n_lags])
 
-    if Y0.shape[0] != n_timepoints:
-        print(
-            "ProdMat::: Input should be in (n_timepoints x N) form, the matrix was transposed."
-        )
-        Y0 = Y0.T
+    for lag in range(n_lags):
+        X_ac_prod[:, :, lag] = X_ac[:, lag].reshape(-1, 1) * X_ac[:, lag].reshape(1, -1)
 
-    N = Y0.shape[1]
-    Idx = np.triu_indices(N)
-    # F = (N*(N-1))/2
-    SM = np.empty([N, N, n_timepoints])
-    for i in np.arange(0, np.size(Idx[0]) - 1):
-        xx = Idx[0][i]
-        yy = Idx[1][i]
-        SM[xx, yy, :] = Y0[:, xx] * Y0[:, yy]
-        SM[yy, xx, :] = Y0[:, yy] * Y0[:, xx]
-
-    return SM
+    return X_ac_prod
 
 
 def corr_mat(
