@@ -10,11 +10,10 @@ University of Oxford, 2019
 import os
 import sys
 
-import numpy as np
-import scipy.stats as sp
-
 import ac_utils
 import matman
+import numpy as np
+import scipy.stats as sp
 
 
 def calc_xdf(
@@ -23,7 +22,7 @@ def calc_xdf(
     method="truncate",
     methodparam="adaptive",
     verbose=True,
-    TV=True,
+    truncate_variance=True,
 ):
 
     X = X.copy()  # Make sure you are not messing around with the original time series
@@ -54,12 +53,13 @@ def calc_xdf(
     X_xc_neg = X_xc[:, :, n_timepoints:-1]  # negative-lag xcorrs
 
     ##### Start of Regularisation-----------------------------------------------
+    breakpoint = np.sqrt(n_timepoints) if methodparam == "" else methodparam
+
     if method.lower() == "tukey":
         if verbose:
             print(
                 f"calc_xdf::: AC Regularisation: Tukey tapering of M = {int(np.round(breakpoint))}"
             )
-        breakpoint = np.sqrt(n_timepoints) if methodparam == "" else methodparam
         X_ac = ac_utils.tukey_taper(X_ac, n_lags, breakpoint)
         X_xc_pos = ac_utils.tukey_taper(X_xc_pos, n_lags, breakpoint)
         X_xc_neg = ac_utils.tukey_taper(X_xc_neg, n_lags, breakpoint)
@@ -93,101 +93,59 @@ def calc_xdf(
                 "calc_xdf::: methodparam for truncation method should be either str or int."
             )
 
-    ##### Start of the Monster Equation----------------------------------------
-    wgt = np.arange(n_lags, 0, -1)
-    wgtm2 = np.tile((np.tile(wgt, [n_regions, 1])), [n_regions, 1])
-    wgtm3 = np.reshape(
-        wgtm2, [n_regions, n_regions, np.size(wgt)]
-    )  # this is shit, eats all the memory!
-    """
-     VarHatRho = (Tp*(1-rho.^2).^2 ...
-     +   rho.^2 .* sum(wgtm3 .* (SumMat(ac.^2,nLg)  +  xc_p.^2 + xc_n.^2),3)...         % 1 2 4
-     -   2.*rho .* sum(wgtm3 .* (SumMat(ac,nLg)    .* (xc_p    + xc_n))  ,3)...         % 5 6 7 8
-     +   2      .* sum(wgtm3 .* (ProdMat(ac,nLg)    + (xc_p   .* xc_n))  ,3))./(T^2);   % 3 9 
-    """
+    ##### Start of the Monster Equation--------------------------------------
 
-    Tp = n_timepoints - 1
-    # Da Equation!--------------------------------------------------------------
-    VarHatRho = (
-        Tp * (1 - rho**2) ** 2
-        + rho**2
-        * np.sum(
-            wgtm3 * (matman.SumMat(X_ac**2, n_lags) + X_xc_pos**2 + X_xc_neg**2),
-            axis=2,
-        )
-        - 2
-        * rho
-        * np.sum(wgtm3 * (matman.SumMat(X_ac, n_lags) * (X_xc_pos + X_xc_neg)), axis=2)
-        + 2
-        * np.sum(wgtm3 * (matman.ProdMat(X_ac, n_lags) + (X_xc_pos * X_xc_neg)), axis=2)
-    ) / (n_timepoints**2)
+    # Equation!--------------------------------------------------------------
 
-    ##### Truncate to Theoritical Variance --------------------------------------
-    TV_val = (1 - rho**2) ** 2 / n_timepoints
-    TV_val[range(n_regions), range(n_regions)] = 0
+    # fmt: off
+    wgtm3 = np.tile(np.arange(n_lags, 0, -1), (n_regions, n_regions, 1))
+    # reference equation (2)
+    var_rho_hat = (
+        (n_timepoints - 1) * (1 - rho**2) ** 2
+        + rho**2 * np.sum(wgtm3 * (matman.ac_sum(X_ac**2, n_lags) + X_xc_pos**2 + X_xc_neg**2), axis=2)
+        - 2 * rho * np.sum(wgtm3 * (matman.ac_sum(X_ac, n_lags) * (X_xc_pos + X_xc_neg)), axis=2)
+        + 2 * np.sum(wgtm3 * (matman.ac_prod(X_ac, n_lags) + (X_xc_pos * X_xc_neg)), axis=2)
+                ) / (n_timepoints**2)   
+    # fmt: on
 
-    idx_ex = np.where(VarHatRho < TV_val)
-    NumTVEx = (np.shape(idx_ex)[1]) / 2
-    # print(NumTVEx)
+    ##### Truncate to Theoritical Variance ------------------------------------
+    # Assuming that the variance can *only* get larger in presence of autocorrelation.
+    var_rho = (1 - rho**2) ** 2 / n_timepoints
+    var_rho[range(n_regions), range(n_regions)] = 0  # set the diagonal to zero
 
-    if NumTVEx > 0 and TV:
+    idx_ex = np.where(var_rho_hat < var_rho)
+    n_idx_ex = (np.shape(idx_ex)[1]) / 2
+
+    if n_idx_ex > 0 and truncate_variance:
         if verbose:
             print("Variance truncation is ON.")
-        # Assuming that the variance can *only* get larger in presence of autocorrelation.
-        VarHatRho[idx_ex] = TV_val[idx_ex]
-        FGE = n_regions * (n_regions - 1) / 2
+        var_rho_hat[idx_ex] = var_rho[idx_ex]
+        n_edges = n_regions * (n_regions - 1) / 2
         if verbose:
             print(
-                f"calc_xdf::: {str(NumTVEx)} ({str(round(NumTVEx / FGE * 100, 3))}%) edges had variance smaller than the textbook variance!"
+                f"calc_xdf::: {str(n_idx_ex)} ({str(round(n_idx_ex / n_edges * 100, 3))}%) edges had variance smaller than the textbook variance!"
             )
 
     elif verbose:
         print("calc_xdf::: NO truncation to the theoritical variance.")
 
-    # Sanity Check:
-    #        for ii in np.arange(NumTVEx):
-    #            print( str( idx_ex[0][ii]+1 ) + '  ' + str( idx_ex[1][ii]+1 ) )
-
-    # -------------------------------------------------------------------------
-    #####Start of Statistical Inference -------------------------------------------
-
-    # Well, these are all Matlab and pretty useless -- copy pasted them just in case though...
-    # Pearson's turf -- We don't really wanna go there, eh?
-    # rz      = rho./sqrt((ASAt));     %abs(ASAt), because it is possible to get negative ASAt!
-    # r_pval  = 2 * normcdf(-abs(rz)); %both tails
-    # r_pval(1:nn+1:end) = 0;          %NaN screws up everything, so get rid of the diag, but becareful here.
-
-    # Our turf--------------------------------
-
     rf = np.arctanh(rho)
-    sf = VarHatRho / (
-        (1 - rho**2) ** 2
-    )  # delta method; make sure the N is correct! So they cancel out.
+    # delta method; make sure the n_regions is correct! So they cancel out.
+    sf = var_rho_hat / ((1 - rho**2) ** 2)
     rzf = rf / np.sqrt(sf)
     f_pval = 2 * sp.norm.cdf(-abs(rzf))  # both tails
 
     # diagonal is rubbish;
-    VarHatRho[range(n_regions), range(n_regions)] = 0
-    f_pval[
-        range(n_regions), range(n_regions)
-    ] = 0  # NaN screws up everything, so get rid of the diag, but be careful here.
+    var_rho_hat[range(n_regions), range(n_regions)] = 0
+    # NaN screws up everything, so get rid of the diag, but be careful here.
+    f_pval[range(n_regions), range(n_regions)] = 0
     rzf[range(n_regions), range(n_regions)] = 0
 
     return {
         "p": f_pval,
         "z": rzf,
         "znaive": znaive,
-        "v": VarHatRho,
-        "TV": TV_val,
+        "v": var_rho_hat,
+        "TV": var_rho,
         "TVExIdx": idx_ex,
     }
-
-
-def blockPrint():
-    """disable verbose"""
-    sys.stdout = open(os.devnull, "w")
-
-
-def enablePrint():
-    """enable verbose"""
-    sys.stdout = sys.__stdout__

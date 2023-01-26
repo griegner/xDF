@@ -44,7 +44,7 @@ assert np.isclose(
 mts = np.array([x_ar1, y_corr_ar1])
 
 print("+++++++ xDF without regularisation::: +++++++++++++++++++++++++++++++")
-xDFOut_TVOn = calc_xdf(mts, n_timepoints, method="", TV=True)
+xDFOut_TVOn = calc_xdf(mts, n_timepoints, method="", truncate_variance=True)
 
 Z = stat_threshold(xDFOut_TVOn["z"], mce="b")[0]
 print(len(np.where(Z != 0)[0]) / 2)
