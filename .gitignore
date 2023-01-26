@@ -4,3 +4,4 @@ __pycache__
 *.pyc
 .vscode
 timeline.md
+nilearn_cache/
