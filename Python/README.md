@@ -2,7 +2,7 @@
 > Python implementation
 
 ### install
-`$ git clone --branch gr https://github.com/griegner/xDF.git`
+`$ git clone --branch gr https://github.com/griegner/xDF.git`  
 `$ cd xDF/Python; pip install -r requirements.txt`
 
 ### requirements
